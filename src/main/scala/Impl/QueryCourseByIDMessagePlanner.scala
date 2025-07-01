@@ -3,77 +3,86 @@ package Impl
 
 import APIs.UserAuthService.VerifyTokenValidityMessage
 import Utils.CourseManagementProcess.fetchCourseByID
+import Objects.CourseManagementService.{CourseInfo, CourseTime, DayOfWeek, TimePeriod}
+import Common.API.{PlanContext, Planner}
+import Common.Object.SqlParameter
+import cats.effect.IO
+import org.slf4j.LoggerFactory
+import io.circe._
+import io.circe.syntax._
+import io.circe.generic.auto._
+import org.joda.time.DateTime
+import cats.implicits.*
+import Common.DBAPI._
+import Common.Serialize.CustomColumnTypes.{decodeDateTime, encodeDateTime}
+import Common.ServiceUtils.schemaName
+import io.circe._
+import io.circe.syntax._
+import io.circe.generic.auto._
+import org.joda.time.DateTime
+import cats.implicits.*
+import Common.DBAPI._
+import Common.API.{PlanContext, Planner}
+import cats.effect.IO
+import Common.Object.SqlParameter
+import Common.Serialize.CustomColumnTypes.{decodeDateTime,encodeDateTime}
+import Common.ServiceUtils.schemaName
 import Objects.CourseManagementService.CourseTime
 import Objects.CourseManagementService.DayOfWeek
 import Objects.CourseManagementService.TimePeriod
 import Objects.CourseManagementService.CourseInfo
-import Common.API.{PlanContext, Planner}
-import Common.DBAPI._
-import Common.Object.SqlParameter
-import Common.ServiceUtils.schemaName
-import cats.effect.IO
-import org.slf4j.LoggerFactory
-import org.joda.time.DateTime
-import io.circe._
-import io.circe.syntax._
-import io.circe.generic.auto._
-import org.joda.time.DateTime
-import cats.implicits.*
-import Common.DBAPI._
-import Common.API.{PlanContext, Planner}
-import cats.effect.IO
-import Common.Object.SqlParameter
 import Common.Serialize.CustomColumnTypes.{decodeDateTime,encodeDateTime}
-import Common.ServiceUtils.schemaName
 import Objects.CourseManagementService.CourseInfo
-import io.circe._
-import io.circe.syntax._
-import io.circe.generic.auto._
-import cats.implicits.*
-import Common.Serialize.CustomColumnTypes.{decodeDateTime,encodeDateTime}
 
 case class QueryCourseByIDMessagePlanner(
-   userToken: String,
-   courseID: Int,
-   override val planContext: PlanContext
+    userToken: String,
+    courseID: Int,
+    override val planContext: PlanContext
 ) extends Planner[CourseInfo] {
-
   val logger = LoggerFactory.getLogger(this.getClass.getSimpleName + "_" + planContext.traceID.id)
 
-  override def plan(using context: PlanContext): IO[CourseInfo] = {
+  override def plan(using planContext: PlanContext): IO[CourseInfo] = {
     for {
-      // Step 1: Verify token validity
-      _ <- IO(logger.info(s"Step 1: 验证用户令牌有效性: ${userToken}"))
-      isTokenValid <- verifyToken(userToken)
-      _ <- if (!isTokenValid) {
-        IO.raiseError(new IllegalStateException("用户令牌无效或过期"))
+      // Step 1: Validate the user token
+      _ <- IO(logger.info(s"验证用户令牌: userToken=${userToken}"))
+      isValid <- validateUserToken(userToken)
+      _ <- IO(logger.info(s"用户令牌验证结果: ${isValid}"))
+
+      // If invalid, throw an error
+      _ <- if (!isValid) {
+        IO.raiseError(new IllegalArgumentException("用户令牌无效或过期"))
       } else {
-        IO(logger.info(s"令牌有效"))
+        IO.unit
       }
 
-      // Step 2: Query course information by course ID
-      _ <- IO(logger.info(s"Step 2: 根据课程ID ${courseID} 查询课程信息"))
-      courseInfo <- queryCourseByID(courseID)
-    } yield courseInfo
+      // Step 2: Fetch course by ID
+      _ <- IO(logger.info(s"根据课程ID查询课程信息: courseID=${courseID}"))
+      courseOption <- fetchCourseInfo(courseID)
+      _ <- IO(logger.info(s"查询课程信息结果是否存在: ${courseOption.isDefined}"))
+
+      // If course does not exist, throw an error
+      course <- courseOption match {
+        case Some(course) => IO(course)
+        case None => IO.raiseError(new NoSuchElementException("课程不存在"))
+      }
+    } yield course
   }
 
-  private def verifyToken(userToken: String)(using PlanContext): IO[Boolean] = {
-    logger.info(s"调用 VerifyTokenValidityMessage 接口")
-    VerifyTokenValidityMessage(userToken).send.flatMap { result =>
-      logger.info(s"令牌验证结果: ${result}")
-      IO(result)
+  // Step 1: Validate token using external API
+  private def validateUserToken(userToken: String)(using PlanContext): IO[Boolean] = {
+    VerifyTokenValidityMessage(userToken).send.map { isValid =>
+      logger.info(s"用户令牌 ${userToken} 验证结果: ${isValid}")
+      isValid
     }
   }
 
-  private def queryCourseByID(courseID: Int)(using PlanContext): IO[CourseInfo] = {
-    fetchCourseByID(courseID).flatMap {
-      case Some(courseInfo) =>
-        IO(logger.info(s"课程信息查询成功: ${courseInfo}")) >>
-        IO(courseInfo)
-      case None =>
-        val errorMessage = s"课程ID ${courseID} 对应的课程信息不存在"
-        logger.error(errorMessage)
-        IO.raiseError(new IllegalStateException(errorMessage))
+  // Step 2: Fetch course information using utility method
+  private def fetchCourseInfo(courseID: Int)(using PlanContext): IO[Option[CourseInfo]] = {
+    fetchCourseByID(courseID).map { courseOption =>
+      courseOption.foreach { course =>
+        logger.info(s"查询到的课程信息: courseID=${course.courseID}, location=${course.location}")
+      }
+      courseOption
     }
   }
 }
