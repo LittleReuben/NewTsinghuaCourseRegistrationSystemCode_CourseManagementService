@@ -5,10 +5,25 @@ import Common.API.{PlanContext, Planner}
 import Common.DBAPI._
 import Common.Object.SqlParameter
 import Common.ServiceUtils.schemaName
-import Utils.CourseManagementProcess.{validateTeacherToken, validateTeacherManagePermission, recordCourseManagementOperationLog, fetchCourseByID}
 import Objects.CourseManagementService.CourseInfo
+import Utils.CourseManagementProcess.validateTeacherToken
+import Utils.CourseManagementProcess.fetchCourseByID
+import Utils.CourseManagementProcess.recordCourseManagementOperationLog
+import Utils.CourseManagementProcess.validateTeacherManagePermission
 import cats.effect.IO
 import org.slf4j.LoggerFactory
+import io.circe._
+import io.circe.syntax._
+import io.circe.generic.auto._
+import org.joda.time.DateTime
+import cats.implicits.*
+import Common.Serialize.CustomColumnTypes.{decodeDateTime, encodeDateTime}
+import APIs.UserAuthService.VerifyTokenValidityMessage
+import Objects.CourseManagementService.CourseTime
+import Objects.CourseManagementService.DayOfWeek
+import Objects.CourseManagementService.TimePeriod
+import Objects.UserAccountService.SafeUserInfo
+import Objects.UserAccountService.UserRole
 import io.circe._
 import io.circe.syntax._
 import io.circe.generic.auto._
@@ -20,17 +35,8 @@ import cats.effect.IO
 import Common.Object.SqlParameter
 import Common.Serialize.CustomColumnTypes.{decodeDateTime,encodeDateTime}
 import Common.ServiceUtils.schemaName
-import APIs.UserAuthService.VerifyTokenValidityMessage
-import Utils.CourseManagementProcess.fetchCourseByID
-import Objects.CourseManagementService.CourseTime
-import Utils.CourseManagementProcess.recordCourseManagementOperationLog
-import Utils.CourseManagementProcess.validateTeacherManagePermission
-import Objects.CourseManagementService.DayOfWeek
-import Objects.CourseManagementService.TimePeriod
-import Objects.UserAccountService.SafeUserInfo
-import Utils.CourseManagementProcess.validateTeacherToken
-import Objects.UserAccountService.UserRole
 import Objects.CourseManagementService.CourseInfo
+import Common.Serialize.CustomColumnTypes.{decodeDateTime,encodeDateTime}
 
 case class DeleteCourseMessagePlanner(
                                        teacherToken: String,
@@ -39,75 +45,71 @@ case class DeleteCourseMessagePlanner(
                                      ) extends Planner[String] {
   val logger = LoggerFactory.getLogger(this.getClass.getSimpleName + "_" + planContext.traceID.id)
 
-  override def plan(using PlanContext): IO[String] = {
-    for {
-      // Step 1: Validate teacherToken and retrieve teacherID
-      _ <- IO(logger.info(s"开始验证教师 token: ${teacherToken}"))
-      teacherIDOpt <- validateTeacherToken(teacherToken)
-      teacherID <- IO {
-        teacherIDOpt.getOrElse {
-          val errorMsg = s"教师 token 验证失败或无效: ${teacherToken}"
-          logger.error(errorMsg)
-          throw new IllegalArgumentException(errorMsg)
-        }
-      }
-      _ <- IO(logger.info(s"教师 token 验证通过，教师 ID: ${teacherID}"))
+  override def plan(using planContext: PlanContext): IO[String] = {
 
-      // Step 2: Check if the course exists and matches the teacherID
-      _ <- IO(logger.info(s"开始检查课程是否存在以及教师ID是否匹配，课程ID: ${courseID}, 教师ID: ${teacherID}"))
-      courseOpt <- fetchCourseByID(courseID)
-      course <- IO {
-        courseOpt.getOrElse {
-          val errorMsg = s"课程 ID=${courseID} 不存在"
-          logger.error(errorMsg)
-          throw new IllegalArgumentException(errorMsg)
-        }
+    def validateToken(token: String): IO[Int] = for {
+      _ <- IO(logger.info(s"开始验证教师 token: ${token}"))
+      teacherIDOpt <- validateTeacherToken(token)
+      teacherID <- teacherIDOpt match {
+        case Some(id) =>
+          IO(logger.info(s"token验证成功，教师ID为: ${id}")) >>
+            IO.pure(id)
+        case None =>
+          IO(logger.warn(s"教师 token 验证失败")) >>
+            IO.raiseError(new IllegalStateException("教师 token 验证失败"))
       }
-      _ <- IO {
-        if (course.teacherID != teacherID) {
-          val errorMsg = s"教师 ID=${teacherID} 无权管理课程 ID=${courseID}"
-          logger.error(errorMsg)
-          throw new IllegalAccessException(errorMsg)
-        } else {
-          logger.info(s"教师 ID=${teacherID} 与课程 ID=${courseID} 匹配成功")
-        }
-      }
+    } yield teacherID
 
-      // Step 3: Validate permission for teacher to delete course
-      _ <- IO(logger.info(s"开始验证教师是否有权限删除课程"))
-      permission <- validateTeacherManagePermission()
-      _ <- IO {
-        if (!permission) {
-          val errorMsg = s"当前阶段不允许教师删除课程"
-          logger.error(errorMsg)
-          throw new IllegalAccessException(errorMsg)
-        }
+    def validateCourseExistence(courseID: Int, teacherID: Int): IO[CourseInfo] = for {
+      _ <- IO(logger.info(s"开始根据课程ID ${courseID} 查询课程信息"))
+      courseInfoOpt <- fetchCourseByID(courseID)
+      courseInfo <- courseInfoOpt match {
+        case Some(course) if course.teacherID == teacherID =>
+          IO(logger.info(s"课程存在且与当前教师匹配，课程信息: ${course}")) >>
+            IO.pure(course)
+        case Some(_) =>
+          IO(logger.warn(s"课程 ${courseID} 不属于教师 ${teacherID} 或权限不匹配")) >>
+            IO.raiseError(new IllegalStateException("课程不属于当前教师或权限不匹配"))
+        case None =>
+          IO(logger.warn(s"课程ID ${courseID} 不存在")) >>
+            IO.raiseError(new IllegalStateException("课程不存在"))
       }
-      _ <- IO(logger.info(s"教师删除课程权限验证通过"))
+    } yield courseInfo
 
-      // Step 4: Delete the course record in the CourseTable
-      _ <- IO(logger.info(s"开始删除课程记录，课程ID: ${courseID}"))
+    def validatePermission(): IO[Unit] = for {
+      _ <- IO(logger.info("开始验证当前阶段是否允许删除课程"))
+      isAllowed <- validateTeacherManagePermission()
+      _ <- if (!isAllowed) {
+        IO(logger.warn("当前阶段不允许删除课程")) >>
+          IO.raiseError(new IllegalStateException("当前阶段不允许删除课程"))
+      } else IO(logger.info("当前阶段允许删除课程"))
+    } yield ()
+
+    def deleteCourse(courseID: Int): IO[String] = for {
+      _ <- IO(logger.info(s"准备删除课程ID ${courseID} 的记录"))
       deleteSql =
         s"""
-           DELETE FROM ${schemaName}.course_table
-           WHERE course_id = ?;
-         """
-      deleteResult <- writeDB(deleteSql, List(SqlParameter("Int", courseID.toString)))
-      _ <- IO(logger.info(s"课程记录删除成功，结果: ${deleteResult}"))
+        DELETE FROM ${schemaName}.course_table WHERE course_id = ?
+         """.stripMargin
+      deleteParams = List(SqlParameter("Int", courseID.toString))
+      deleteResult <- writeDB(deleteSql, deleteParams)
+      _ <- IO(logger.info(s"课程删除操作结果: ${deleteResult}"))
+    } yield deleteResult
 
-      // Step 5: Record course management operation log
-      _ <- IO(logger.info(s"开始记录课程删除操作日志"))
-      logResult <- recordCourseManagementOperationLog(
-        teacherID = teacherID,
-        operation = "DELETE_COURSE",
-        courseID = courseID,
-        details = s"教师 ID=${teacherID} 删除了课程 ID=${courseID}"
-      )
-      _ <- IO(logger.info(s"课程删除操作日志记录成功，结果: ${logResult}"))
+    def logOperation(teacherID: Int, courseID: Int): IO[Unit] = for {
+      _ <- IO(logger.info(s"开始记录删除课程操作日志，教师ID: ${teacherID}, 课程ID: ${courseID}"))
+      logDetails = s"教师ID=${teacherID} 删除了课程ID=${courseID}"
+      logResult <- recordCourseManagementOperationLog(teacherID, "DeleteCourse", courseID, logDetails)
+      _ <- IO(logger.info(s"操作日志记录结果: ${logResult}"))
+    } yield ()
 
-      // Step 6: Return success message
-      result <- IO(logger.info("课程删除操作完成，返回确认信息")) >>
-        IO.pure("删除成功！")
-    } yield result
+    for {
+      teacherID <- validateToken(teacherToken)
+      _ <- validatePermission()
+      _ <- validateCourseExistence(courseID, teacherID)
+      _ <- deleteCourse(courseID)
+      _ <- logOperation(teacherID, courseID)
+      _ <- IO(logger.info(s"课程ID ${courseID} 删除成功"))
+    } yield "删除成功！"
   }
 }
