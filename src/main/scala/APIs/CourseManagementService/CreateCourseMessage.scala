@@ -1,29 +1,14 @@
 package APIs.CourseManagementService
 
-import Common.API.API
-import Global.ServiceCenter.CourseManagementServiceCode
-
-import io.circe.{Decoder, Encoder, Json}
-import io.circe.generic.semiauto.{deriveDecoder, deriveEncoder}
-import io.circe.syntax.*
-import io.circe.parser.*
-import Common.Serialize.CustomColumnTypes.{decodeDateTime, encodeDateTime}
-
-import com.fasterxml.jackson.core.`type`.TypeReference
-import Common.Serialize.JacksonSerializeUtils
-
-import scala.util.Try
-
-import org.joda.time.DateTime
-import java.util.UUID
-import Objects.CourseManagementService.{CourseTime, CourseInfo}
-import Common.API.{PlanContext, Planner}
+import Common.API.PlanContext
 import Common.DBAPI._
-import Common.Object.ParameterList
 import Common.Object.SqlParameter
 import Common.ServiceUtils.schemaName
+import Objects.CourseManagementService.{CourseTime, CourseInfo}
+import Common.Serialize.CustomColumnTypes.{decodeDateTime, encodeDateTime}
+
 import cats.effect.IO
-import org.slf4j.LoggerFactory
+import org.joda.time.DateTime
 
 /**
  * CreateCourseMessage
@@ -42,109 +27,79 @@ case class CreateCourseMessage(
   courseCapacity: Int,
   time: List[CourseTime],
   location: String
-) extends API[CourseInfo](CourseManagementServiceCode)
-
-object CreateCourseMessage {
-
-  import Common.Serialize.CustomColumnTypes.{decodeDateTime, encodeDateTime}
-
-  // Circe 默认的 Encoder 和 Decoder
-  private val circeEncoder: Encoder[CreateCourseMessage] = deriveEncoder
-  private val circeDecoder: Decoder[CreateCourseMessage] = deriveDecoder
-
-  // Jackson 对应的 Encoder 和 Decoder
-  private val jacksonEncoder: Encoder[CreateCourseMessage] = Encoder.instance { currentObj =>
-    Json.fromString(JacksonSerializeUtils.serialize(currentObj))
-  }
-
-  private val jacksonDecoder: Decoder[CreateCourseMessage] = Decoder.instance { cursor =>
-    try { Right(JacksonSerializeUtils.deserialize(cursor.value.noSpaces, new TypeReference[CreateCourseMessage]() {})) } 
-    catch { case e: Throwable => Left(io.circe.DecodingFailure(e.getMessage, cursor.history)) }
-  }
-
-  // Circe + Jackson 兜底的 Encoder
-  given createCourseMessageEncoder: Encoder[CreateCourseMessage] = Encoder.instance { config =>
-    Try(circeEncoder(config)).getOrElse(jacksonEncoder(config))
-  }
-
-  // Circe + Jackson 兜底的 Decoder
-  given createCourseMessageDecoder: Decoder[CreateCourseMessage] = Decoder.instance { cursor =>
-    circeDecoder.tryDecode(cursor).orElse(jacksonDecoder.tryDecode(cursor))
-  }
-
-  def executeCreateCourseMessage(message: CreateCourseMessage)(using PlanContext): IO[CourseInfo] = {
-    val logger = LoggerFactory.getLogger(this.getClass)
-
+) {
+  def create()(using PlanContext): IO[CourseInfo] = {
     for {
-      _ <- IO(logger.info(s"Start creating course for teacher with token: ${message.teacherToken}"))
-
-      // Validate teacher's token, ensure it exists and is valid
-      teacherID <- readDBInt(
-        s"SELECT teacher_id FROM ${schemaName}.teachers WHERE token = ?;",
-        List(SqlParameter("String", message.teacherToken))
-      ).recoverWith {
-        case e: Throwable =>
-          IO.raiseError(new IllegalArgumentException(s"Invalid teacher token: ${message.teacherToken}"))
-      }
-
-      // Insert new course into the courses table
-      currentTime = DateTime.now()
-      courseID <- writeDB(
-        s"""
-           INSERT INTO ${schemaName}.courses 
-           (course_group_id, course_capacity, location, created_at, updated_at, teacher_id) 
-           VALUES (?, ?, ?, ?, ?, ?) RETURNING course_id;
-         """,
-        List(
-          SqlParameter("Int", message.courseGroupID.toString),
-          SqlParameter("Int", message.courseCapacity.toString),
-          SqlParameter("String", message.location),
-          SqlParameter("DateTime", currentTime.getMillis.toString),
-          SqlParameter("DateTime", currentTime.getMillis.toString),
-          SqlParameter("Int", teacherID.toString)
-        )
-      ).map(result => decodeType[Int](result)).recoverWith {
-        case e: Throwable =>
-          IO.raiseError(new IllegalStateException(s"Failed to create course. Reason: ${e.getMessage}"))
-      }
-
-      // Insert course times into the course_times table
-      courseTimesParams = message.time.map { courseTime =>
-        ParameterList(
-          List(
-            SqlParameter("Int", courseID.toString),
-            SqlParameter("String", courseTime.dayOfWeek.toString),
-            SqlParameter("String", courseTime.timePeriod.toString)
-          )
-        )
-      }
-      _ <- writeDBList(
-        s"""
-           INSERT INTO ${schemaName}.course_times 
-           (course_id, day_of_week, time_period) 
-           VALUES (?, ?, ?);
-         """,
-        courseTimesParams
-      ).recoverWith {
-        case e: Throwable =>
-          IO.raiseError(new IllegalStateException(s"Failed to insert course times. Reason: ${e.getMessage}"))
-      }
-
-      // Fetch created course info
-      courseInfoJson <- readDBJson(
-        s"""
-           SELECT c.course_id, c.course_capacity, c.location, c.course_group_id, c.teacher_id, 
-                  COALESCE(c.selected_students_size, 0) AS selected_students_size, 
-                  COALESCE(c.waiting_list_size, 0) AS waiting_list_size, 
-                  COALESCE(c.preselected_students_size, 0) AS preselected_students_size 
-           FROM ${schemaName}.courses c 
-           WHERE c.course_id = ?;
-         """,
-        List(SqlParameter("Int", courseID.toString))
-      )
-      courseInfo = decodeType[CourseInfo](courseInfoJson)
-
+      // Step 1: 验证教师身份
+      teacherID <- validateTeacherToken(teacherToken)
+      
+      // Step 2: 写入课程信息至数据库
+      courseID <- writeCourseInfo(courseGroupID, courseCapacity, time, location, teacherID)
+      
+      // Step 3: 构建返回的课程信息
+      courseInfo <- buildCourseInfo(courseID, courseGroupID, courseCapacity, time, location, teacherID)
     } yield courseInfo
+  }
+
+  private def validateTeacherToken(token: String)(using PlanContext): IO[Int] = {
+    val sql = s"SELECT teacher_id FROM ${schemaName}.teacher_tokens WHERE token_value = ? AND is_valid = true;"
+    readDBInt(sql, List(SqlParameter("String", token)))
+  }
+
+  private def writeCourseInfo(
+    courseGroupID: Int, 
+    courseCapacity: Int, 
+    time: List[CourseTime], 
+    location: String, 
+    teacherID: Int
+  )(using PlanContext): IO[Int] = {
+    val sql =
+      s"""
+         INSERT INTO ${schemaName}.courses (course_group_id, capacity, time, location, teacher_id)
+         VALUES (?, ?, ?, ?, ?)
+         RETURNING course_id;
+       """
+    val params = List(
+      SqlParameter("Int", courseGroupID.toString),
+      SqlParameter("Int", courseCapacity.toString),
+      SqlParameter("String", time.asJson.noSpaces),
+      SqlParameter("String", location),
+      SqlParameter("Int", teacherID.toString)
+    )
+    readDBInt(sql, params)
+  }
+
+  private def buildCourseInfo(
+    courseID: Int,
+    courseGroupID: Int,
+    courseCapacity: Int,
+    time: List[CourseTime],
+    location: String,
+    teacherID: Int
+  )(using PlanContext): IO[CourseInfo] = {
+    // 构建CourseInfo对象
+    val sql =
+      s"""
+         SELECT 
+           COALESCE(preselected_students_size, 0) AS preselected_students_size,
+           COALESCE(selected_students_size, 0) AS selected_students_size,
+           COALESCE(waiting_list_size, 0) AS waiting_list_size
+         FROM ${schemaName}.courses
+         WHERE course_id = ?;
+       """
+    readDBJson(sql, List(SqlParameter("Int", courseID.toString))).map { json =>
+      CourseInfo(
+        courseID = courseID,
+        courseCapacity = courseCapacity,
+        time = time,
+        location = location,
+        courseGroupID = courseGroupID,
+        teacherID = teacherID,
+        preselectedStudentsSize = decodeField[Int](json, "preselected_students_size"),
+        selectedStudentsSize = decodeField[Int](json, "selected_students_size"),
+        waitingListSize = decodeField[Int](json, "waiting_list_size")
+      )
+    }
   }
 
 }
