@@ -1,7 +1,6 @@
 package Impl
 
 
-
 import APIs.UserAuthService.VerifyTokenValidityMessage
 import Utils.CourseManagementProcess.fetchCourseGroupByID
 import Objects.CourseManagementService.CourseGroup
@@ -12,6 +11,8 @@ import Common.Object.SqlParameter
 import Common.ServiceUtils.schemaName
 import cats.effect.IO
 import org.slf4j.LoggerFactory
+import io.circe._
+import cats.implicits._
 import io.circe._
 import io.circe.syntax._
 import io.circe.generic.auto._
@@ -26,10 +27,9 @@ import Common.ServiceUtils.schemaName
 import Objects.UserAccountService.UserRole
 import Objects.UserAccountService.SafeUserInfo
 import Utils.CourseManagementProcess.validateTeacherToken
-import org.joda.time.DateTime
-import io.circe._
 import io.circe.syntax._
 import io.circe.generic.auto._
+import org.joda.time.DateTime
 import cats.implicits.*
 import Common.Serialize.CustomColumnTypes.{decodeDateTime,encodeDateTime}
 
@@ -37,59 +37,54 @@ case class QueryCourseGroupAuthorizationReceivedMessagePlanner(
     teacherToken: String,
     override val planContext: PlanContext
 ) extends Planner[List[CourseGroup]] {
+
   val logger = LoggerFactory.getLogger(this.getClass.getSimpleName + "_" + planContext.traceID.id)
 
-  override def plan(using planContext: PlanContext): IO[List[CourseGroup]] = {
+  override def plan(using PlanContext): IO[List[CourseGroup]] = {
     for {
-      // Step 1: 验证Token的有效性并获取 teacherID
-      _ <- IO(logger.info(s"[Step 1] 验证教师Token的有效性: token=${teacherToken}"))
+      // Step 1: 验证教师 Token 的有效性并获取 teacherID
+      _ <- IO(logger.info(s"验证教师 Token 的有效性: $teacherToken"))
       teacherIDOpt <- validateTeacherToken(teacherToken)
-
       teacherID <- teacherIDOpt match {
-        case Some(id) => IO.pure(id)
         case None =>
-          val errorMessage = s"教师Token验证失败: token=${teacherToken}"
-          IO(logger.error(errorMessage)) >> IO.raiseError(new IllegalArgumentException(errorMessage))
+          IO.raiseError(new IllegalStateException("教师鉴权失败"))
+        case Some(id) =>
+          IO(logger.info(s"教师鉴权成功，教师 ID 为 $id")).as(id)
       }
-      _ <- IO(logger.info(s"[Step 1.1] 教师Token验证通过, teacherID=${teacherID}"))
 
-      // Step 2: 查询教师被授权的课程组ID列表
-      authorizedCourseGroupIDs <- getAuthorizedCourseGroupIDs(teacherID)
-      _ <- IO(logger.info(s"[Step 2] 教师被授权的课程组ID列表: ${authorizedCourseGroupIDs.mkString(", ")}"))
+      // Step 2: 查询教师被授权的课程组 ID 列表
+      _ <- IO(logger.info(s"查询教师被授权的课程组 ID 列表, 教师ID=$teacherID"))
+      courseGroupIDs <- queryAuthorizedCourseGroupIDs(teacherID)
 
-      // Step 3: 查询课程组详细信息
-      courseGroupDetails <- fetchCourseGroupDetails(authorizedCourseGroupIDs)
-      _ <- IO(logger.info(s"[Step 3] 已获取课程组详情，总数=${courseGroupDetails.size}"))
+      // Step 3: 使用课程组 ID 查询课程组详细信息
+      _ <- IO(logger.info(s"根据课程组 ID 列表查询课程组详细信息, 被授权的课程组列表IDs=${courseGroupIDs.mkString(",")}"))
+      courseGroups <- queryCourseGroupsByIDs(courseGroupIDs)
 
-    } yield courseGroupDetails
+    } yield courseGroups
   }
 
-  // Step 2.1: 在AuthorizedTeachersTable中查询teacherID对应的所有课程组ID
-  private def getAuthorizedCourseGroupIDs(teacherID: Int)(using PlanContext): IO[List[Int]] = {
-    val sql = s"""
-      SELECT course_group_id 
-      FROM ${schemaName}.authorized_teachers_table 
+  // 子步骤：根据教师 ID 查询授权的课程组 ID 列表
+  private def queryAuthorizedCourseGroupIDs(teacherID: Int)(using PlanContext): IO[List[Int]] = {
+    val query = s"""
+      SELECT course_group_id
+      FROM ${schemaName}.authorized_teachers_table
       WHERE authorized_teacher_id = ?
     """
     for {
-      _ <- IO(logger.info(s"执行SQL: ${sql}, 查询授权的课程组ID"))
-      resultRows <- readDBRows(sql, List(SqlParameter("Int", teacherID.toString)))
-      courseGroupIDs <- IO(resultRows.map(json => decodeField[Int](json, "course_group_id")))
-      _ <- IO(logger.info(s"查询结果，课程组IDs: ${courseGroupIDs.mkString(", ")}"))
-    } yield courseGroupIDs
+      _ <- IO(logger.info(s"执行 SQL: $query，查询教师ID=$teacherID的被授权课程组 IDs"))
+      rows <- readDBRows(query, List(SqlParameter("Int", teacherID.toString)))
+    } yield rows.map(row => decodeField[Int](row, "course_group_id"))
   }
 
-  // Step 3.1: 根据课程组ID列表查询课程组详细信息
-  private def fetchCourseGroupDetails(courseGroupIDs: List[Int])(using PlanContext): IO[List[CourseGroup]] = {
-    val logger = LoggerFactory.getLogger("fetchCourseGroupDetails")
-    val courseGroupDetailsIOs = courseGroupIDs.map { courseGroupID =>
-      fetchCourseGroupByID(courseGroupID).flatMap {
-        case Some(courseGroup) =>
-          IO(logger.info(s"获取到课程组详情: ${courseGroup}")) >> IO.pure(Some(courseGroup))
+  // 子步骤：根据课程组 ID 列表查询课程组详细信息
+  private def queryCourseGroupsByIDs(courseGroupIDs: List[Int])(using PlanContext): IO[List[CourseGroup]] = {
+    courseGroupIDs.traverse { id =>
+      fetchCourseGroupByID(id).flatMap {
         case None =>
-          IO(logger.warn(s"未找到课程组ID: ${courseGroupID} 的详情")) >> IO.pure(None)
+          IO(logger.warn(s"课程组 ID=$id 不存在，跳过")).as(None)
+        case Some(courseGroup) =>
+          IO(logger.info(s"课程组 ID=$id 查询成功: $courseGroup")).as(Some(courseGroup))
       }
-    }
-    courseGroupDetailsIOs.sequence.map(_.flatten)
+    }.map(_.flatten)
   }
 }
