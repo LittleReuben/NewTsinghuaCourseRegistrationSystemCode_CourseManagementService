@@ -71,7 +71,7 @@ case class QueryCourseGroupAuthorizationReceivedMessagePlanner(
       WHERE authorized_teacher_id = ?
     """
     for {
-      _ <- IO(logger.info(s"执行 SQL: $query，查询教师ID=$teacherID的被授权课程组 IDs"))
+      _ <- IO(logger.info(s"执行 SQL: $query，查询教师ID=$teacherID 的被授权课程组 IDs"))
       rows <- readDBRows(query, List(SqlParameter("Int", teacherID.toString)))
     } yield rows.map(row => decodeField[Int](row, "course_group_id"))
   }
