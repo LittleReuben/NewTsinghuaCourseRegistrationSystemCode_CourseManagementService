@@ -98,7 +98,7 @@ case class UpdateCourseGroupInfoMessagePlanner(
 
   private def updateCourseGroupStep(originalGroup: CourseGroup)(using PlanContext): IO[Unit] = {
     for {
-      updateFields = {
+      updateFields <- IO {
         val nameUpdate = newName.map(name => s"name = '${name}'")
         val creditUpdate = newCredit.map(credit => s"credit = ${credit}")
         Seq(nameUpdate, creditUpdate).flatten.mkString(", ")
