@@ -1,6 +1,5 @@
 package Impl
 
-
 import Common.API.{PlanContext, Planner}
 import Common.DBAPI._
 import Common.Object.SqlParameter
@@ -12,30 +11,8 @@ import org.slf4j.LoggerFactory
 import io.circe._
 import io.circe.syntax._
 import io.circe.generic.auto._
-import Common.Serialize.CustomColumnTypes.{decodeDateTime, encodeDateTime}
-import io.circe._
-import io.circe.syntax._
-import io.circe.generic.auto._
 import org.joda.time.DateTime
 import cats.implicits.*
-import Common.DBAPI._
-import Common.API.{PlanContext, Planner}
-import cats.effect.IO
-import Common.Object.SqlParameter
-import Common.Serialize.CustomColumnTypes.{decodeDateTime,encodeDateTime}
-import Common.ServiceUtils.schemaName
-import Utils.CourseManagementProcess.recordCourseGroupOperationLog
-import APIs.UserAuthService.VerifyTokenValidityMessage
-import Utils.CourseManagementProcess.fetchCourseGroupByID
-import Objects.SystemLogService.SystemLogEntry
-import Objects.UserAccountService.UserRole
-import Objects.UserAccountService.SafeUserInfo
-import Utils.CourseManagementProcess.validateTeacherToken
-import Utils.CourseManagementProcess.validateTeacherManagePermission
-import org.joda.time.DateTime
-import cats.implicits.*
-import Common.Serialize.CustomColumnTypes.{decodeDateTime,encodeDateTime}
-import Utils.CourseManagementProcess.validateTeacherManagePermission
 
 case class GrantCourseGroupAuthorizationMessagePlanner(
   teacherToken: String,
@@ -60,8 +37,8 @@ case class GrantCourseGroupAuthorizationMessagePlanner(
       courseGroup <- fetchCourseGroupByID(courseGroupID).flatMap {
         case Some(group) if group.ownerTeacherID == teacherID =>
           IO(logger.info(s"课程组验证通过 - 存在且归属教师ID匹配: courseGroup=${group}")).as(group)
-        case Some(_) =>
-          IO(logger.error(s"课程组归属教师ID不匹配: ownerTeacherID=${_.ownerTeacherID}")) >>
+        case Some(group) =>
+          IO(logger.error(s"课程组归属教师ID不匹配: ownerTeacherID=${group.ownerTeacherID}")) >>
             IO.raiseError(new IllegalArgumentException(s"课程组归属权验证失败: courseGroupID[${courseGroupID}]"))
         case None =>
           IO(logger.error(s"课程组不存在: courseGroupID=${courseGroupID}")) >>
@@ -112,3 +89,4 @@ case class GrantCourseGroupAuthorizationMessagePlanner(
     } yield updatedAuthorizedTeacherIDs
   }
 }
+// 问题已修复: 将错误的 `_` 占位符变量替换为明确命名的 `group`，确保编译器能够正确推导类型。
