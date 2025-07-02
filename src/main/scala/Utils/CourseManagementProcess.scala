@@ -25,7 +25,6 @@ import Common.API.PlanContext
 import Objects.CourseManagementService.CourseGroup
 import Utils.CourseManagementProcess.fetchCourseByID
 import Objects.CourseManagementService.CourseInfo
-import APIs.UserAccountService.QuerySafeUserInfoByTokenMessage
 import Utils.CourseManagementProcess.fetchCourseGroupByID
 import Objects.SystemLogService.SystemLogEntry
 import Utils.CourseManagementProcess.validateTeacherToken
@@ -68,7 +67,7 @@ case object CourseManagementProcess {
   
                       case Some(userInfoJson) =>
                         for {
-                          userInfo <- IO { decodeType[SafeUserInfo](userInfoJson) }
+                          userInfo <- IO { decodeType[SafeUserInfo](userInfoJson.noSpaces) } // Fix: Ensure userInfoJson is converted to string format before decoding.
                           _ <- IO(logger.info(s"解析用户信息, ID: ${userInfo.userID}, 角色: ${userInfo.role}"))
   
                           // 如果角色不是 Teacher，返回 None
