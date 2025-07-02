@@ -15,29 +15,10 @@ import org.slf4j.LoggerFactory
 import io.circe._
 import io.circe.generic.auto._
 import io.circe.syntax._
-import cats.implicits.*
+import cats.implicits._
 import Common.Serialize.CustomColumnTypes.{decodeDateTime, encodeDateTime}
 import APIs.UserAuthService.VerifyTokenValidityMessage
 import Objects.UserAccountService.{UserRole, SafeUserInfo}
-import io.circe._
-import io.circe.syntax._
-import io.circe.generic.auto._
-import org.joda.time.DateTime
-import cats.implicits.*
-import Common.DBAPI._
-import Common.API.{PlanContext, Planner}
-import cats.effect.IO
-import Common.Object.SqlParameter
-import Common.Serialize.CustomColumnTypes.{decodeDateTime,encodeDateTime}
-import Common.ServiceUtils.schemaName
-import Utils.CourseManagementProcess.recordCourseGroupOperationLog
-import Utils.CourseManagementProcess.fetchCourseGroupByID
-import Objects.UserAccountService.UserRole
-import Objects.UserAccountService.SafeUserInfo
-import Utils.CourseManagementProcess.validateTeacherToken
-import Utils.CourseManagementProcess.validateTeacherManagePermission
-import Utils.CourseManagementProcess.validateTeacherManagePermission
-import Common.Serialize.CustomColumnTypes.{decodeDateTime,encodeDateTime}
 
 case class UpdateCourseGroupInfoMessagePlanner(
     teacherToken: String,
@@ -117,10 +98,11 @@ case class UpdateCourseGroupInfoMessagePlanner(
 
   private def updateCourseGroupStep(originalGroup: CourseGroup)(using PlanContext): IO[Unit] = {
     for {
-      updateFields = Seq(
-        newName.map(name => s"name = '${name}'"),
-        newCredit.map(credit => s"credit = ${credit}")
-      ).flatten.mkString(", ")
+      updateFields = {
+        val nameUpdate = newName.map(name => s"name = '${name}'")
+        val creditUpdate = newCredit.map(credit => s"credit = ${credit}")
+        Seq(nameUpdate, creditUpdate).flatten.mkString(", ")
+      }
 
       _ <- if (updateFields.isEmpty) {
         IO(logger.warn("未传入任何需要更新的字段")) >>
