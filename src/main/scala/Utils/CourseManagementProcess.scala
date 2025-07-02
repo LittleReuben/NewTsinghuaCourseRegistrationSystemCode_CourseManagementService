@@ -67,7 +67,7 @@ case object CourseManagementProcess {
   
                       case Some(userInfoJson) =>
                         for {
-                          userInfo <- IO { decodeType[SafeUserInfo](userInfoJson.noSpaces) } // Fix: Ensure userInfoJson is converted to string format before decoding.
+                          userInfo <- IO { decodeType[SafeUserInfo](userInfoJson) } // Fix: Ensure userInfoJson is converted to string format before decoding.
                           _ <- IO(logger.info(s"解析用户信息, ID: ${userInfo.userID}, 角色: ${userInfo.role}"))
   
                           // 如果角色不是 Teacher，返回 None
