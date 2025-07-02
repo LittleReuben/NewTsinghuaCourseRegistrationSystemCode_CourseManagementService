@@ -9,7 +9,7 @@ import Common.DBAPI._
 import Common.ServiceUtils.schemaName
 import org.slf4j.LoggerFactory
 import APIs.UserAuthService.VerifyTokenValidityMessage
-import APIs.UserAuthService.QuerySafeUserInfoByTokenMessage
+import APIs.UserAccountService.QuerySafeUserInfoByTokenMessage
 import Objects.UserAccountService.UserRole
 import Objects.UserAccountService.SafeUserInfo
 import Common.API.{PlanContext, Planner}
