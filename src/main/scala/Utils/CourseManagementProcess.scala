@@ -54,20 +54,19 @@ case object CourseManagementProcess {
                   for {
                     // Step 2: 通过 token 查询用户账户的详细信息
                     _ <- IO(logger.info(s"验证有效 token 开始获取用户信息: ${teacherToken}"))
-                    userInfoJsonOpt <- QuerySafeUserInfoByTokenMessage(teacherToken).send
+                    userInfoOption <- QuerySafeUserInfoByTokenMessage(teacherToken).send
   
-                    _ <- IO(logger.info(s"用户信息查询结果: ${userInfoJsonOpt}"))
+                    _ <- IO(logger.info(s"用户信息查询结果: ${userInfoOption}"))
                     
                     // 如果未找到用户信息，返回 None
-                    result <- userInfoJsonOpt match {
+                    result <- userInfoOption match {
                       case None =>
                         for {
                           _ <- IO(logger.warn(s"通过 token 获取不到任何用户信息: ${teacherToken}"))
                         } yield None
   
-                      case Some(userInfoJson) =>
+                      case Some(userInfo) =>
                         for {
-                          userInfo <- IO { decodeType[SafeUserInfo](userInfoJson) } // Fix: Ensure userInfoJson is converted to string format before decoding.
                           _ <- IO(logger.info(s"解析用户信息, ID: ${userInfo.userID}, 角色: ${userInfo.role}"))
   
                           // 如果角色不是 Teacher，返回 None
