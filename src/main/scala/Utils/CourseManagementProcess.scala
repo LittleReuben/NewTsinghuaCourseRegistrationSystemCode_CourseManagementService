@@ -356,7 +356,7 @@ case object CourseManagementProcess {
       _ <- IO(logger.info("[validateTeacherManagePermission] 查询当前学期阶段的 allow_teacher_manage 字段"))
   
       allowTeacherManage <- readDBBoolean(
-        s"SELECT allow_teacher_manage FROM ${schemaName}.semester_phase_status WHERE current_phase = true;",
+        s"SELECT allow_teacher_manage FROM ${schemaName}.semester_phase_status",
         List()
       )
   
