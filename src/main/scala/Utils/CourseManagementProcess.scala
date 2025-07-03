@@ -289,7 +289,7 @@ case object CourseManagementProcess {
     for {
       // Step 1: Validate teacherID
       _ <- IO(logger.info(s"开始验证教师ID和课程组ID的有效性: teacherID=${teacherID}, courseGroupID=${courseGroupID}"))
-      teacherIDOpt <- if (teacherID > 0) Some(teacherID) else None
+      teacherIDOpt = if (teacherID > 0) Some(teacherID) else None
       validatedTeacherID <- teacherIDOpt match {
         case Some(id) => IO(logger.info(s"教师ID验证通过: teacherID=${id}")).as(id)
         case None => 
