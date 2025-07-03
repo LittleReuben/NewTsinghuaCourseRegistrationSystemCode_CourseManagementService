@@ -212,24 +212,24 @@ case object CourseManagementProcess {
             IO(logger.info(s"[recordCourseManagementOperationLog] 课程存在，继续处理日志记录"))
         }
   
-        // Step 2.3 准备日志记录相关信息
+        // Step 2.3 准备日志记录的详细信息
+        detailsWithCourseID <- IO(s"课程ID=${courseID}:${details}")
         timestamp <- IO(DateTime.now().getMillis.toString)
         sql <- IO {
           s"""
-          INSERT INTO ${schemaName}.operation_log (teacher_id, course_id, action, details, timestamp)
-          VALUES (?, ?, ?, ?, ?)
+          INSERT INTO ${schemaName}.system_log_table (user_id, action, details, timestamp)
+          VALUES (?, ?, ?, ?)
           """
         }
         parameters <- IO {
           List(
             SqlParameter("Int", teacherID.toString),
-            SqlParameter("Int", courseID.toString),
             SqlParameter("String", operation),
-            SqlParameter("String", details),
+            SqlParameter("String", detailsWithCourseID),
             SqlParameter("DateTime", timestamp)
           )
         }
-        _ <- IO(logger.info(s"[recordCourseManagementOperationLog] 准备写入日志 SQL=${sql}，参数包含教师ID=${teacherID}, 课程ID=${courseID}, 操作=${operation}, 时间戳=${timestamp}"))
+        _ <- IO(logger.info(s"[recordCourseManagementOperationLog] 准备写入日志 SQL=${sql}，参数包含教师ID=${teacherID}, 操作=${operation}, 时间戳=${timestamp}"))
   
         // Step 2.4 写入日志到数据库
         writeResult <- writeDB(sql, parameters)
