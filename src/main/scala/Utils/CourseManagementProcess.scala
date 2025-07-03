@@ -352,26 +352,18 @@ case object CourseManagementProcess {
   // val logger = LoggerFactory.getLogger("validateTeacherManagePermission")  // 同文后端处理: logger 统一
   
     for {
-      // Step 1: 调用 QuerySemesterPhaseStatus 方法获取当前学期阶段信息及其权限
-      _ <- IO(logger.info("[validateTeacherManagePermission] 调用 QuerySemesterPhaseStatus 方法获取当前学期阶段权限信息"))
+      // Step 1: 直接查询当前学期阶段权限中的 allow_teacher_manage
+      _ <- IO(logger.info("[validateTeacherManagePermission] 查询当前学期阶段的 allow_teacher_manage 字段"))
   
-      // 替换旧代码，正确调用查询方法（QuerySemesterPhaseStatusMessage 不存在）
-      permissionsJson <- readDBJson(
-        s"SELECT permissions FROM ${schemaName}.semester_phase_status WHERE current_phase = true;",
+      allowTeacherManage <- readDBBoolean(
+        s"SELECT allow_teacher_manage FROM ${schemaName}.semester_phase_status WHERE current_phase = true;",
         List()
       )
-  
-      // Step 2: 解析 Permissions 对象中的 allowTeacherManage 字段
-      allowTeacherManage <- IO {
-        decodeField[Boolean](permissionsJson, "allow_teacher_manage")
-      }
   
       // Step 3: 返回 allowTeacherManage 值
       _ <- IO(logger.info(s"[validateTeacherManagePermission] allowTeacherManage 字段值: ${allowTeacherManage}"))
     } yield allowTeacherManage
   }
-  
-  // Reason for fixing: The original code attempted to call an undefined `QuerySemesterPhaseStatusMessage`. This has been resolved by replacing it with a database query (`readDBJson`) to fetch the necessary data regarding `permissions` from the semester phase status table.
   
   def fetchCourseByID(courseID: Int)(using PlanContext): IO[Option[CourseInfo]] = {
     logger.info(s"开始查询课程信息，传入的课程ID为 ${courseID}。")
