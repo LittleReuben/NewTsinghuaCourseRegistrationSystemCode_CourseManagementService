@@ -311,6 +311,7 @@ case object CourseManagementProcess {
       timestamp <- IO { DateTime.now() }
       systemLogEntry <- IO {
         SystemLogEntry(
+          logID = 0, // 假定数据库自动生成logID
           timestamp = timestamp,
           userID = validatedTeacherID,
           action = operation,
