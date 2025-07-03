@@ -328,12 +328,13 @@ case object CourseManagementProcess {
         VALUES (?, ?, ?, ?)
         """
       }
+      detailsWithCourseGroupID <- IO(s"课程ID=${courseGroupID}:${details}")
       writeParams <- IO {
         List(
           SqlParameter("DateTime", timestamp.getMillis.toString),
           SqlParameter("Int", validatedTeacherID.toString),
           SqlParameter("String", operation),
-          SqlParameter("String", details)
+          SqlParameter("String", detailsWithCourseGroupID)
         )
       }
       writeResult <- writeDB(writeSQL, writeParams)
