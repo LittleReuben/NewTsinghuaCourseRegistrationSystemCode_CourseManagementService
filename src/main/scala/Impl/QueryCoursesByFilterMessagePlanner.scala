@@ -102,7 +102,7 @@ case class QueryCoursesByFilterMessagePlanner(
         val isCourseGroupIDMatching = courseGroupID.forall(_ == course.courseGroupID)
         val isCourseGroupNameMatching = courseGroupOpt.exists(cg => courseGroupName.forall(cg.name.contains))
         val isTeacherNameMatching = teacherInfoOpt.exists(ti => teacherName.forall(_ == ti.userName))
-        val isTimeMatching = allowedTimePeriods.isEmpty || allowedTimePeriods.forall(tp => course.time.exists(_ == tp))
+        val isTimeMatching = allowedTimePeriods.forall(tp => course.time.exists(_ == tp))
 
         logger.info(s"[Filtering Course] ID: ${course.courseID}, GroupIDMatch: ${isCourseGroupIDMatching}, GroupNameMatch: ${isCourseGroupNameMatching}, TeacherMatch: ${isTeacherNameMatching}, TimeMatch: ${isTimeMatching}")
 
