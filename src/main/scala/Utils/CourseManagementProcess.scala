@@ -82,22 +82,36 @@ case object CourseManagementProcess {
       logger.warn(s"课程ID ${courseID} 无效，直接返回 None。")
       IO(None)
     } else {
-      val sqlQuery =
+      val courseQuery =
         s"""
-SELECT course_id, course_capacity, time, location, course_group_id, teacher_id
-FROM ${schemaName}.course_table
-WHERE course_id = ?;
+  SELECT course_id, course_capacity, time, location, course_group_id, teacher_id
+  FROM ${schemaName}.course_table
+  WHERE course_id = ?;
            """.stripMargin
   
-      logger.info(s"数据库查询SQL生成完成：${sqlQuery}")
+      logger.info(s"数据库查询SQL生成完成：${courseQuery}")
   
       val queryParameters = IO(List(SqlParameter("Int", courseID.toString)))
   
       for {
         parameters <- queryParameters
-        // 执行查询，尝试获取数据库返回值
-        optionalCourseJson <- readDBJsonOptional(sqlQuery, parameters)
+        // 执行查询课程的基础信息
+        optionalCourseJson <- readDBJsonOptional(courseQuery, parameters)
         _ <- IO(logger.info(s"数据库返回结果是否存在：${optionalCourseJson.isDefined}"))
+  
+        // 查询 preselectedStudentsSize, selectedStudentsSize, waitingListSize
+        preselectedSize <- readDBInt(
+          s"SELECT COUNT(*) FROM ${schemaName}.course_preselection_table WHERE course_id = ?;",
+          List(SqlParameter("Int", courseID.toString))
+        )
+        selectedSize <- readDBInt(
+          s"SELECT COUNT(*) FROM ${schemaName}.course_selection_table WHERE course_id = ?;",
+          List(SqlParameter("Int", courseID.toString))
+        )
+        waitingListSize <- readDBInt(
+          s"SELECT COUNT(*) FROM ${schemaName}.waiting_list_table WHERE course_id = ?;",
+          List(SqlParameter("Int", courseID.toString))
+        )
   
         // 如果查询结果存在，则解析数据为 CourseInfo
         courseInfo <- IO {
@@ -125,9 +139,9 @@ WHERE course_id = ?;
               location = locationValue,
               courseGroupID = courseGroupIDValue,
               teacherID = teacherIDValue,
-              preselectedStudentsSize = 0, // 数据表未提供该值，设置为默认值 0
-              selectedStudentsSize = 0,   // 数据表未提供该值，设置为默认值 0
-              waitingListSize = 0         // 数据表未提供该值，设置为默认值 0
+              preselectedStudentsSize = preselectedSize,
+              selectedStudentsSize = selectedSize,
+              waitingListSize = waitingListSize
             )
           }
         }
