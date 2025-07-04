@@ -12,6 +12,10 @@ import Common.Object.SqlParameter
 import Common.ServiceUtils.schemaName
 import cats.effect.IO
 import org.slf4j.LoggerFactory
+import io.circe.Json
+import cats.syntax.all._ // 修复 traverse 报错
+import io.circe.parser.decode
+import io.circe.generic.auto._
 
 case class QueryCoursesByCourseGroupMessagePlanner(
                                                     courseGroupID: Int,
@@ -75,5 +79,3 @@ case class QueryCoursesByCourseGroupMessagePlanner(
     } yield courses
   }
 }
-
-// 模型修复编译错误的方式: 增加 fetchAllCourses 方法用于解决问题，该方法通过查询数据库获得所有 course_id 的列表，并调用 Utils.CourseManagementProcess.fetchCourseByID 查询各个课程的信息。
