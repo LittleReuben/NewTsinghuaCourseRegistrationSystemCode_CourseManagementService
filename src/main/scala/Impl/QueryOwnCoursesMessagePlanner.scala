@@ -1,6 +1,5 @@
 package Impl
 
-
 import APIs.UserAuthService.VerifyTokenValidityMessage
 import Objects.CourseManagementService.{CourseInfo, CourseTime, DayOfWeek, TimePeriod}
 import Utils.CourseManagementProcess.validateTeacherToken
@@ -16,26 +15,7 @@ import org.joda.time.DateTime
 import io.circe._
 import io.circe.syntax._
 import io.circe.generic.auto._
-import cats.implicits.*
-import io.circe._
-import io.circe.syntax._
-import io.circe.generic.auto._
-import org.joda.time.DateTime
-import cats.implicits.*
-import Common.DBAPI._
-import Common.API.{PlanContext, Planner}
-import cats.effect.IO
-import Common.Object.SqlParameter
-import Common.Serialize.CustomColumnTypes.{decodeDateTime,encodeDateTime}
-import Common.ServiceUtils.schemaName
-import Objects.CourseManagementService.CourseTime
-import Objects.CourseManagementService.DayOfWeek
-import Objects.CourseManagementService.TimePeriod
-import Objects.CourseManagementService.CourseInfo
-import io.circe.Json
-import io.circe.parser._
-import Common.Serialize.CustomColumnTypes.{decodeDateTime,encodeDateTime}
-import Objects.CourseManagementService.CourseInfo
+import cats.implicits._
 
 case class QueryOwnCoursesMessagePlanner(
   teacherToken: String,
@@ -57,49 +37,45 @@ case class QueryOwnCoursesMessagePlanner(
       }
       _ <- IO(logger.info(s"教师 ID 验证成功: ${teacherID}"))
 
-      // Step 2: Query courses from CourseTable
-      courses <- queryCoursesByTeacherID(teacherID)
-      _ <- IO(logger.info(s"查询课程记录完成，总数为 ${courses.size}"))
+      // Step 2: Query courses by teacherID and fetch detailed information
+      courseIDs <- queryCourseIDsByTeacherID(teacherID)
+      _ <- IO(logger.info(s"查询课程记录完成，总数为 ${courseIDs.size}"))
+      courses <- fetchCoursesByIDs(courseIDs)
 
     } yield courses
   }
 
-  private def queryCoursesByTeacherID(teacherID: Int)(using PlanContext): IO[List[CourseInfo]] = {
+  private def queryCourseIDsByTeacherID(teacherID: Int)(using PlanContext): IO[List[Int]] = {
     val sql =
       s"""
-SELECT course_id, course_capacity, time, location, course_group_id, teacher_id
+SELECT course_id
 FROM ${schemaName}.course_table
 WHERE teacher_id = ?;
          """.stripMargin
     logger.info(s"正在执行 SQL 查询: ${sql}")
     for {
       courseRows <- readDBRows(sql, List(SqlParameter("Int", teacherID.toString)))
-      courses <- IO {
-        courseRows.map { json =>
-          // 将查询结果转换为具体 CourseInfo 对象
-          val courseID = decodeField[Int](json, "course_id")
-          val courseCapacity = decodeField[Int](json, "course_capacity")
-          val timeRaw = decodeField[String](json, "time")
-          val location = decodeField[String](json, "location")
-          val courseGroupID = decodeField[Int](json, "course_group_id")
-          val teacherID = decodeField[Int](json, "teacher_id")
-
-          // 解析时间字段
-          val timeList = decodeType[List[CourseTime]](timeRaw)
-
-          CourseInfo(
-            courseID = courseID,
-            courseCapacity = courseCapacity,
-            time = timeList,
-            location = location,
-            courseGroupID = courseGroupID,
-            teacherID = teacherID,
-            preselectedStudentsSize = 0, // 初始化为0，数据库表中不存在此字段
-            selectedStudentsSize = 0,   // 初始化为0，数据库表中不存在此字段
-            waitingListSize = 0         // 初始化为0，数据库表中不存在此字段
-          )
-        }
+      courseIDs <- IO {
+        courseRows.map(json => decodeField[Int](json, "course_id"))
       }
-    } yield courses
+    } yield courseIDs
+  }
+
+  private def fetchCoursesByIDs(courseIDs: List[Int])(using PlanContext): IO[List[CourseInfo]] = {
+    logger.info("开始调用 fetchCourseByID 方法获取详细的课程信息")
+    for {
+      courseInfos <- IO(courseIDs.map(fetchCourseByID))
+      result <- courseInfos.sequence
+    } yield result
+  }
+
+  private def fetchCourseByID(courseID: Int)(using PlanContext): IO[CourseInfo] = {
+    logger.info(s"正在调用 fetchCourseByID 获取 courseID: ${courseID} 的课程信息")
+    Utils.CourseManagementProcess.fetchCourseByID(courseID).flatMap {
+      case Some(courseInfo) => IO.pure(courseInfo)
+      case None =>
+        IO(logger.error(s"无法找到 courseID: ${courseID} 的课程信息")) >>
+        IO.raiseError(new IllegalStateException(s"无法找到 courseID: ${courseID} 的课程信息"))
+    }
   }
 }
