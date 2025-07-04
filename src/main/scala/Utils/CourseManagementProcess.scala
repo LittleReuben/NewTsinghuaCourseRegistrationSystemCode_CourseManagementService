@@ -86,7 +86,7 @@ case object CourseManagementProcess {
   
   def validateCourseTimeConflict(teacherID: Int, courseTimeToCheck: List[CourseTime])(using PlanContext): IO[Boolean] = {
     logger.info(s"开始检查老师ID=${teacherID}的新增课程时间是否存在冲突")
-  
+
     val sql = s"SELECT time FROM ${schemaName}.course_table WHERE teacher_id = ?"
     val parameters = List(SqlParameter("Int", teacherID.toString))
   
@@ -99,7 +99,7 @@ case object CourseManagementProcess {
       existingCourseTimes <- IO {
         rows.map { row =>
           val timeString = decodeField[String](row, "time")
-          decodeType[CourseTime](timeString)
+          decodeType[List[CourseTime]](timeString)
         }
       }
       _ <- IO(logger.info(s"已开设课程时间列表解析完成，共 ${existingCourseTimes.size} 条记录"))
@@ -108,9 +108,11 @@ case object CourseManagementProcess {
       isConflict <- IO {
         courseTimeToCheck.exists { newCourseTime =>
           logger.debug(s"检查新增课程时间：dayOfWeek=${newCourseTime.dayOfWeek}, timePeriod=${newCourseTime.timePeriod}")
-          existingCourseTimes.exists { existingTime =>
-            existingTime.dayOfWeek == newCourseTime.dayOfWeek &&
-            existingTime.timePeriod == newCourseTime.timePeriod
+          existingCourseTimes.exists { courseTimeList =>  // 每个courseTimeList是一个List[CourseTime]
+            courseTimeList.exists { existingTime =>
+              existingTime.dayOfWeek == newCourseTime.dayOfWeek &&
+                existingTime.timePeriod == newCourseTime.timePeriod
+            }
           }
         }
       }
@@ -199,10 +201,13 @@ case object CourseManagementProcess {
   
       for {
         // Step 2.1 查询目标课程信息
+        /*
         fetchedCourseOption <- fetchCourseByID(courseID)
         _ <- IO(logger.info(s"[recordCourseManagementOperationLog] 查询目标课程结果=${fetchedCourseOption}"))
+        */
   
         // Step 2.2 检查课程是否存在
+        /*
         _ <- fetchedCourseOption match {
           case None =>
             val errorMsg = s"课程不存在，课程ID=${courseID}"
@@ -211,6 +216,7 @@ case object CourseManagementProcess {
           case Some(_) =>
             IO(logger.info(s"[recordCourseManagementOperationLog] 课程存在，继续处理日志记录"))
         }
+        */
   
         // Step 2.3 准备日志记录的详细信息
         detailsWithCourseID <- IO(s"课程ID=${courseID}:${details}")
@@ -298,6 +304,8 @@ case object CourseManagementProcess {
       }
   
       // Step 2: Validate courseGroupID
+      // Note: No need for further check
+      /*
       courseGroupOpt <- fetchCourseGroupByID(courseGroupID)
       validatedCourseGroup <- courseGroupOpt match {
         case Some(group) => 
@@ -306,6 +314,7 @@ case object CourseManagementProcess {
           IO(logger.error(s"课程组ID验证失败: courseGroupID=${courseGroupID}")) >>
           IO.raiseError(new IllegalArgumentException(s"课程组ID[${courseGroupID}]不存在"))
       }
+      */
   
       // Step 3: Construct log entry
       timestamp <- IO { DateTime.now() }
