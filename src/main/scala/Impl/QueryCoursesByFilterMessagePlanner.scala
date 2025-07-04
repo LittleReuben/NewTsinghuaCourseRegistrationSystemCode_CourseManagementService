@@ -50,12 +50,11 @@ case class QueryCoursesByFilterMessagePlanner(
       _ <- IO(logger.info("根据过滤条件对课程进行筛选"))
       filteredCourses <- filterCourses(allCourses)
 
-      // ** Fix: Assign the correct format to filteredCourses
-      // Additional processing to obtain course group for each course
-      coursesWithGroups <- filteredCourses.map {
+      // Fix: Updated structure for filteredCourses, ensuring no compilation error occurs
+      coursesWithGroups <- filteredCourses.flatMap {
         case (course, courseGroupOpt) =>
           courseGroupOpt.map(courseGroup => PairOfGroupAndCourse(courseGroup, course))
-      }.flatten.pure[IO]
+      }.pure[IO]
 
       // Step 4: Final output
       _ <- IO(logger.info(s"返回过滤后的课程信息，总计: ${coursesWithGroups.size} 个匹配的课程"))
@@ -102,4 +101,3 @@ case class QueryCoursesByFilterMessagePlanner(
     } yield if (isMatching) courseGroupOpt else None
   }
 }
-// 模型修复编译错误的原因: `flatten` 的编译问题是由于 `filteredCourses` 的结构不适用于直接调用 `flatten`，必须通过 `map` 和 `pure[IO]` 调整数据结构才能成功编译。
