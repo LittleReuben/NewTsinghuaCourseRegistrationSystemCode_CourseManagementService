@@ -78,7 +78,9 @@ case class QueryCoursesByFilterMessagePlanner(
   }
 
   private def filterCourses(courses: List[CourseInfo])(using PlanContext): IO[List[(CourseInfo, Option[CourseGroup])]] = {
-    courses.traverse(course => checkCourseAndGroupValidity(course).map(valid => valid.map(course -> _))).map(_.flatten)
+    courses.traverse { course =>
+      checkCourseAndGroupValidity(course).map(groupOpt => (course, groupOpt))
+    }
   }
 
   private def checkCourseAndGroupValidity(course: CourseInfo)(using PlanContext): IO[Option[CourseGroup]] = {
