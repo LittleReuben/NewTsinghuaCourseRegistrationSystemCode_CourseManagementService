@@ -22,7 +22,7 @@ import org.joda.time.DateTime
 import io.circe._
 import io.circe.syntax._
 import io.circe.generic.auto._
-import cats.implicits.*
+import cats.implicits._
 
 case class QueryCoursesByFilterMessagePlanner(
     userToken: String,
@@ -52,10 +52,10 @@ case class QueryCoursesByFilterMessagePlanner(
 
       // ** Fix: Assign the correct format to filteredCourses
       // Additional processing to obtain course group for each course
-      coursesWithGroups <- filteredCourses.traverse {
+      coursesWithGroups <- filteredCourses.map {
         case (course, courseGroupOpt) =>
-          IO(courseGroupOpt.map(courseGroup => PairOfGroupAndCourse(courseGroup, course)))
-      }.map(_.flatten)
+          courseGroupOpt.map(courseGroup => PairOfGroupAndCourse(courseGroup, course))
+      }.flatten.pure[IO]
 
       // Step 4: Final output
       _ <- IO(logger.info(s"返回过滤后的课程信息，总计: ${coursesWithGroups.size} 个匹配的课程"))
@@ -102,3 +102,4 @@ case class QueryCoursesByFilterMessagePlanner(
     } yield if (isMatching) courseGroupOpt else None
   }
 }
+// 模型修复编译错误的原因: `flatten` 的编译问题是由于 `filteredCourses` 的结构不适用于直接调用 `flatten`，必须通过 `map` 和 `pure[IO]` 调整数据结构才能成功编译。
