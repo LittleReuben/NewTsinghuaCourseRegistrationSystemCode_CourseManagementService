@@ -62,19 +62,28 @@ case class QueryCoursesByFilterMessagePlanner(
   }
 
   private def fetchAllCourses()(using PlanContext): IO[List[CourseInfo]] = {
-    val sqlQuery =
-      s"""
-         SELECT course_id, course_capacity, time, location, course_group_id, teacher_id
-         FROM ${schemaName}.course_table;
-       """.stripMargin
+    for {
+      _ <- IO(logger.info(s"查询所有课程基本信息的SQL语句"))
+      
+      // 查询所有课程ID
+      courseIDRows <- readDBRows(
+        s"SELECT course_id FROM ${schemaName}.course_table;",
+        List.empty[SqlParameter]
+      )
+      courseIDs = courseIDRows.map(row => decodeField[Int](row, "course_id"))
+      _ <- IO(logger.info(s"找到课程ID总计: ${courseIDs.size}"))
 
-    logger.info(s"SQL查询所有课程: $sqlQuery")
-    readDBRows(sqlQuery, List.empty).map { rows =>
-      rows.map { row =>
-        logger.info(s"解析课程记录: ${row.noSpaces}")
-        decodeType[CourseInfo](row)
-      }
-    }
+      // 根据课程ID获得完整课程信息
+      allCourses <- courseIDs.traverse { courseID =>
+        fetchCourseByID(courseID).flatMap {
+          case Some(courseInfo) =>
+            IO(logger.info(s"成功获取课程信息: ${courseInfo.courseID}"))
+              .as(Some(courseInfo))
+          case None =>
+            IO(logger.warn(s"未找到ID为${courseID}的课程信息")).as(None)
+        }
+      }.map(_.flatten)
+    } yield allCourses
   }
 
   private def filterCourses(courses: List[CourseInfo])(using PlanContext): IO[List[(CourseInfo, Option[CourseGroup])]] = {
@@ -103,4 +112,4 @@ case class QueryCoursesByFilterMessagePlanner(
     } yield if (isMatching) courseGroupOpt else None
   }
 }
-// 模型修复了代码中List[(CourseInfo, Option[CourseGroup])]的处理方式，使用collect来安全地处理Option类型的值避免编译错误。
+// 模型修复了代码中fetchAllCourses函数的实现，将其修改为逐个查询course_id并通过fetchCourseByID获取完整信息，避免编译错误。
