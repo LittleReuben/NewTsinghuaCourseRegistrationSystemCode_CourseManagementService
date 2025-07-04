@@ -1,6 +1,5 @@
 package Impl
 
-
 /**
  * Planner for QueryOwnCourseGroupsMessage: 用于处理查看课程组的功能需求
  */
@@ -8,7 +7,7 @@ import APIs.UserAuthService.VerifyTokenValidityMessage
 import Objects.CourseManagementService.CourseGroup
 import Objects.UserAccountService.UserRole
 import Objects.UserAccountService.SafeUserInfo
-import Utils.CourseManagementProcess.validateTeacherToken
+import Utils.CourseManagementProcess.validateTeacherToken // 引入已实现的方法
 import Common.API.{PlanContext, Planner}
 import Common.DBAPI._
 import Common.Object.SqlParameter
@@ -21,20 +20,6 @@ import io.circe.generic.auto._
 import io.circe.syntax._
 import cats.implicits._
 import Common.Serialize.CustomColumnTypes.{decodeDateTime, encodeDateTime}
-import io.circe._
-import io.circe.syntax._
-import io.circe.generic.auto._
-import org.joda.time.DateTime
-import cats.implicits.*
-import Common.DBAPI._
-import Common.API.{PlanContext, Planner}
-import cats.effect.IO
-import Common.Object.SqlParameter
-import Common.Serialize.CustomColumnTypes.{decodeDateTime,encodeDateTime}
-import Common.ServiceUtils.schemaName
-import Utils.CourseManagementProcess.validateTeacherToken
-import cats.implicits.*
-import Common.Serialize.CustomColumnTypes.{decodeDateTime,encodeDateTime}
 
 case class QueryOwnCourseGroupsMessagePlanner(
                                                teacherToken: String,
@@ -51,10 +36,13 @@ case class QueryOwnCourseGroupsMessagePlanner(
       teacherID <- validateTokenAndFetchTeacherID(teacherToken)
 
       // Step 2: 查询教师 ID 创建的课程组信息
-      _ <- IO(logger.info(s"开始查询课程组信息，教师ID为: ${teacherID}"))
-      courseGroups <- queryCourseGroupsByTeacherID(teacherID)
-
-      _ <- IO(logger.info(s"查询到课程组列表，数量为: ${courseGroups.size}"))
+      _ <- IO(logger.info(s"开始查询课程组ID信息，教师ID为: ${teacherID}"))
+      courseGroupIDs <- queryCourseGroupIDsByTeacherID(teacherID)
+      
+      _ <- IO(logger.info(s"查询到课程组ID列表，数量为: ${courseGroupIDs.size}: ${courseGroupIDs}"))
+      courseGroups <- getCourseGroups(courseGroupIDs)
+      
+      _ <- IO(logger.info(s"查询到完整课程组列表，数量为: ${courseGroups.size}"))
     } yield courseGroups
   }
 
@@ -82,25 +70,50 @@ case class QueryOwnCourseGroupsMessagePlanner(
   }
 
   /**
-   * 查询课程组信息
+   * 查询课程组ID信息
    * @param teacherID 教师 ID
-   * @return List[CourseGroup]
+   * @return List[Int] (课程组ID)
    */
-  private def queryCourseGroupsByTeacherID(teacherID: Int)(using PlanContext): IO[List[CourseGroup]] = {
+  private def queryCourseGroupIDsByTeacherID(teacherID: Int)(using PlanContext): IO[List[Int]] = {
     val sql =
       s"""
-         |SELECT course_group_id, name, credit, owner_teacher_id
-         |FROM ${schemaName}.course_group_table
-         |WHERE owner_teacher_id = ?;
+SELECT course_group_id
+FROM ${schemaName}.course_group_table
+WHERE owner_teacher_id = ?;
       """.stripMargin
 
     for {
-      _ <- IO(logger.info(s"执行查询课程组信息的 SQL 指令: ${sql}"))
+      _ <- IO(logger.info(s"执行查询课程组ID信息的 SQL 指令: ${sql}"))
       rowsJson <- readDBRows(
         sql,
         List(SqlParameter("Int", teacherID.toString))
       )
-      courseGroups <- IO(rowsJson.map(decodeType[CourseGroup]))
-    } yield courseGroups
+      courseGroupIDs <- IO(rowsJson.map(json => decodeField[Int](json, "course_group_id")))
+    } yield courseGroupIDs
+  }
+
+  /**
+   * 根据课程组ID列表获取完整的课程组信息
+   * @param courseGroupIDs 课程组ID列表
+   * @return List[CourseGroup]
+   */
+  private def getCourseGroups(courseGroupIDs: List[Int])(using PlanContext): IO[List[CourseGroup]] = {
+    courseGroupIDs.traverse { courseGroupID =>
+      fetchCourseGroupByID(courseGroupID).flatMap {
+        case Some(courseGroup) => IO.pure(courseGroup)
+        case None =>
+          IO(logger.error(s"未找到课程组ID为 ${courseGroupID} 的课程组信息")) >>
+          IO.raiseError(new IllegalStateException(s"未找到课程组ID为 ${courseGroupID} 的课程组信息"))
+      }
+    }
+  }
+
+  /**
+   * 使用process计划工具根据ID查询课程组
+   * @param courseGroupID 课程组ID
+   * @return Option[CourseGroup]
+   */
+  private def fetchCourseGroupByID(courseGroupID: Int)(using PlanContext): IO[Option[CourseGroup]] = {
+    Utils.CourseManagementProcess.fetchCourseGroupByID(courseGroupID) // 使用工具方法
   }
 }
