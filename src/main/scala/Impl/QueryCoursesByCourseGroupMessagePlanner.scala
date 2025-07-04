@@ -10,6 +10,7 @@ import Common.API.{PlanContext, Planner}
 import Common.DBAPI._
 import Common.Object.SqlParameter
 import Common.ServiceUtils.schemaName
+import APIs.UserAuthService.VerifyTokenValidityMessage
 import cats.effect.IO
 import org.slf4j.LoggerFactory
 import io.circe.Json
@@ -18,6 +19,7 @@ import io.circe.parser.decode
 import io.circe.generic.auto._
 
 case class QueryCoursesByCourseGroupMessagePlanner(
+                                                    userToken: String,
                                                     courseGroupID: Int,
                                                     override val planContext: PlanContext
                                                   ) extends Planner[List[CourseInfo]] {
@@ -25,18 +27,33 @@ case class QueryCoursesByCourseGroupMessagePlanner(
 
   override def plan(using planContext: PlanContext): IO[List[CourseInfo]] = {
     for {
-      // Step 1: 验证 CourseGroupID 的合法性
-      _ <- IO(logger.info(s"[Step 1] 验证 CourseGroupID=${courseGroupID} 的合法性"))
+      // Step 1: 验证用户Token合法性
+      _ <- IO(logger.info(s"[Step 1] 开始验证用户Token的有效性：userToken=${userToken}"))
+      _ <- validateToken()
+      
+      // Step 2: 验证 CourseGroupID 的合法性
+      _ <- IO(logger.info(s"[Step 2] 验证 CourseGroupID=${courseGroupID} 的合法性"))
       courseGroup <- validateCourseGroupID(courseGroupID)
       _ <- IO(logger.info(s"[验证完成] CourseGroupID合法: ${courseGroup}"))
 
-      // Step 2: 查询课程数据
-      _ <- IO(logger.info(s"[Step 2] 查询课程数据，CourseGroupID=${courseGroupID}"))
+      // Step 3: 查询课程数据
+      _ <- IO(logger.info(s"[Step 3] 查询课程数据，CourseGroupID=${courseGroupID}"))
       courses <- fetchAllCourses(courseGroupID)
       _ <- IO(logger.info(s"[查询完成] 返回课程信息封装，数量=${courses.size}"))
 
     } yield courses
   }
+
+  private def validateToken()(using PlanContext): IO[Unit] = for {
+    _ <- IO(logger.info(s"[ValidateToken] 调用 VerifyTokenValidityMessage 验证用户Token：userToken=${userToken}"))
+    isTokenValid <- VerifyTokenValidityMessage(userToken).send
+    _ <- if (isTokenValid) {
+      IO(logger.info("[ValidateToken] 用户Token验证成功"))
+    } else {
+      IO(logger.error("[ValidateToken] 用户Token验证失败")) >>
+        IO.raiseError(new IllegalArgumentException("Invalid user token"))
+    }
+  } yield ()
 
   private def validateCourseGroupID(courseGroupID: Int)(using PlanContext): IO[CourseGroup] = {
     logger.info(s"调用 fetchCourseGroupByID 方法检查课程组是否存在, CourseGroupID=${courseGroupID}")
