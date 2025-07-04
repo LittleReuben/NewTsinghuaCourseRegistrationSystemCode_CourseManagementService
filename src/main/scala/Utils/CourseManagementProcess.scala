@@ -208,14 +208,14 @@ WHERE course_id = ?;
       }
   
       // Step 2: Validate courseGroupID
-      courseGroupOpt <- fetchCourseGroupByID(courseGroupID)
-      validatedCourseGroup <- courseGroupOpt match {
-        case Some(group) => 
-          IO(logger.info(s"课程组ID验证通过: courseGroupID=${courseGroupID}, courseGroup=${group}")).as(group)
-        case None => 
-          IO(logger.error(s"课程组ID验证失败: courseGroupID=${courseGroupID}")) >>
-          IO.raiseError(new IllegalArgumentException(s"课程组ID[${courseGroupID}]不存在"))
-      }
+      // courseGroupOpt <- fetchCourseGroupByID(courseGroupID)
+      // validatedCourseGroup <- courseGroupOpt match {
+      //   case Some(group) => 
+      //     IO(logger.info(s"课程组ID验证通过: courseGroupID=${courseGroupID}, courseGroup=${group}")).as(group)
+      //   case None => 
+      //     IO(logger.error(s"课程组ID验证失败: courseGroupID=${courseGroupID}")) >>
+      //     IO.raiseError(new IllegalArgumentException(s"课程组ID[${courseGroupID}]不存在"))
+      // }
   
       // Step 3: Construct log entry
       timestamp <- IO { DateTime.now() }
