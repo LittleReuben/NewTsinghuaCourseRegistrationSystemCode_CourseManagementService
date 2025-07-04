@@ -1,6 +1,5 @@
 package Impl
 
-
 import Objects.UserAccountService.SafeUserInfo
 import APIs.UserAuthService.VerifyTokenValidityMessage
 import Utils.CourseManagementProcess.fetchCourseByID
@@ -23,22 +22,7 @@ import org.joda.time.DateTime
 import io.circe._
 import io.circe.syntax._
 import io.circe.generic.auto._
-import org.joda.time.DateTime
 import cats.implicits.*
-import Common.DBAPI._
-import Common.API.{PlanContext, Planner}
-import cats.effect.IO
-import Common.Object.SqlParameter
-import Common.Serialize.CustomColumnTypes.{decodeDateTime,encodeDateTime}
-import Common.ServiceUtils.schemaName
-import Objects.CourseManagementService.CourseInfo
-import Utils.CourseManagementProcess.{fetchCourseByID, fetchCourseGroupByID}
-import Objects.CourseManagementService.{CourseGroup, CourseInfo, CourseTime, DayOfWeek, TimePeriod, PairOfGroupAndCourse}
-import io.circe._
-import io.circe.syntax._
-import io.circe.generic.auto._
-import cats.implicits.*
-import Common.Serialize.CustomColumnTypes.{decodeDateTime,encodeDateTime}
 
 case class QueryCoursesByFilterMessagePlanner(
     userToken: String,
@@ -66,9 +50,16 @@ case class QueryCoursesByFilterMessagePlanner(
       _ <- IO(logger.info("根据过滤条件对课程进行筛选"))
       filteredCourses <- filterCourses(allCourses)
 
+      // ** Fix: Assign the correct format to filteredCourses
+      // Additional processing to obtain course group for each course
+      coursesWithGroups <- filteredCourses.traverse {
+        case (course, courseGroupOpt) =>
+          IO(courseGroupOpt.map(courseGroup => PairOfGroupAndCourse(courseGroup, course)))
+      }.map(_.flatten)
+
       // Step 4: Final output
-      _ <- IO(logger.info(s"返回过滤后的课程信息，总计: ${filteredCourses.size} 个匹配的课程"))
-    } yield filteredCourses
+      _ <- IO(logger.info(s"返回过滤后的课程信息，总计: ${coursesWithGroups.size} 个匹配的课程"))
+    } yield coursesWithGroups
   }
 
   private def fetchAllCourses()(using PlanContext): IO[List[CourseInfo]] = {
@@ -87,11 +78,11 @@ case class QueryCoursesByFilterMessagePlanner(
     }
   }
 
-  private def filterCourses(courses: List[CourseInfo])(using PlanContext): IO[List[PairOfGroupAndCourse]] = {
-    courses.traverse(course => filterSingleCourse(course)).map(_.flatten)
+  private def filterCourses(courses: List[CourseInfo])(using PlanContext): IO[List[(CourseInfo, Option[CourseGroup])]] = {
+    courses.traverse(course => checkCourseAndGroupValidity(course).map(valid => valid.map(course -> _))).map(_.flatten)
   }
 
-  private def filterSingleCourse(course: CourseInfo)(using PlanContext): IO[Option[PairOfGroupAndCourse]] = {
+  private def checkCourseAndGroupValidity(course: CourseInfo)(using PlanContext): IO[Option[CourseGroup]] = {
     for {
       // Fetch course group and teacher info
       courseGroupOpt <- fetchCourseGroupByID(course.courseGroupID)
@@ -108,13 +99,6 @@ case class QueryCoursesByFilterMessagePlanner(
 
         isCourseGroupIDMatching && isCourseGroupNameMatching && isTeacherNameMatching && isTimeMatching
       }
-
-      // Get course capacity-related fields and construct result
-      result <- if (isMatching) {
-        for {
-          filledCourseOpt <- fetchCourseByID(course.courseID)
-        } yield filledCourseOpt.map(filledCourse => PairOfGroupAndCourse(courseGroupOpt.get, filledCourse))
-      } else IO(None)
-    } yield result
+    } yield if (isMatching) courseGroupOpt else None
   }
 }
