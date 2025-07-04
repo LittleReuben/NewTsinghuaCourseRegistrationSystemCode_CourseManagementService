@@ -51,9 +51,9 @@ case class QueryCoursesByFilterMessagePlanner(
       filteredCourses <- filterCourses(allCourses)
 
       // Fix: Updated structure for filteredCourses, ensuring no compilation error occurs
-      coursesWithGroups <- filteredCourses.flatMap {
-        case (course, courseGroupOpt) =>
-          courseGroupOpt.map(courseGroup => PairOfGroupAndCourse(courseGroup, course))
+      coursesWithGroups <- filteredCourses.collect {
+        case (course, Some(courseGroup)) =>
+          PairOfGroupAndCourse(courseGroup, course)
       }.pure[IO]
 
       // Step 4: Final output
@@ -101,3 +101,4 @@ case class QueryCoursesByFilterMessagePlanner(
     } yield if (isMatching) courseGroupOpt else None
   }
 }
+// 模型修复了代码中List[(CourseInfo, Option[CourseGroup])]的处理方式，使用collect来安全地处理Option类型的值避免编译错误。
