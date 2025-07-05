@@ -23,13 +23,15 @@ object Init {
       _ <- Common.DBAPI.SwitchDataSourceMessage(projectName = Global.ServiceCenter.projectName).send
       _ <- initSchema(schemaName)
             /** 授权教师表，关联到课程组
+       * tmp: 占位主键
        * course_group_id: 所属课程组ID，关联到CourseGroupTable中的course_group_id
        * authorized_teacher_id: 授权教师ID
        */
       _ <- writeDB(
         s"""
         CREATE TABLE IF NOT EXISTS "${schemaName}"."authorized_teachers_table" (
-            course_group_id SERIAL NOT NULL PRIMARY KEY,
+            tmp SERIAL NOT NULL PRIMARY KEY,
+            course_group_id INT NOT NULL,
             authorized_teacher_id INT NOT NULL
         );
          
