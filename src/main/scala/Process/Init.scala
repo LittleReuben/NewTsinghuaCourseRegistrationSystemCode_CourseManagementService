@@ -29,7 +29,7 @@ object Init {
       _ <- writeDB(
         s"""
         CREATE TABLE IF NOT EXISTS "${schemaName}"."authorized_teachers_table" (
-            course_group_id SERIAL NOT NULL PRIMARY KEY,
+            course_group_id INT NOT NULL,
             authorized_teacher_id INT NOT NULL
         );
          
