@@ -45,6 +45,28 @@ case class GrantCourseGroupAuthorizationMessagePlanner(
             IO.raiseError(new IllegalArgumentException(s"课程组[${courseGroupID}]不存在"))
       }
 
+      // Validate authorized teacher role
+      _ <- {
+        val sql = s"""
+          SELECT role
+          FROM ${schemaName}.user_account_table
+          WHERE user_id = ?
+        """
+        readDBJsonOptional(sql, List(SqlParameter("Int", authorizedTeacherID.toString))).flatMap {
+          case Some(json) =>
+            val role = decodeField[String](json, "role")
+            if (role == "teacher") {
+              IO(logger.info(s"被授权者验证通过，userID=${authorizedTeacherID}, role=${role}"))
+            } else {
+              IO(logger.error(s"被授权者不是教师: userID=${authorizedTeacherID}, role=${role}")) >>
+                IO.raiseError(new IllegalArgumentException(s"被授权者不是教师: userID[${authorizedTeacherID}]"))
+            }
+          case None =>
+            IO(logger.error(s"被授权者不存在: userID=${authorizedTeacherID}")) >>
+              IO.raiseError(new IllegalArgumentException(s"被授权者不存在: userID[${authorizedTeacherID}]"))
+        }
+      }
+
       // Step 3: validate teacher manage permission
       _ <- validateTeacherManagePermission().flatMap { hasPermission =>
         if (!hasPermission) {
@@ -89,4 +111,3 @@ case class GrantCourseGroupAuthorizationMessagePlanner(
     } yield updatedAuthorizedTeacherIDs
   }
 }
-// 问题已修复: 将错误的 `_` 占位符变量替换为明确命名的 `group`，确保编译器能够正确推导类型。
