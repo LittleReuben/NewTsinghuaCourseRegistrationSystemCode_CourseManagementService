@@ -100,7 +100,7 @@ case class CreateCourseGroupMessagePlanner(
 
       // Step 5: 记录操作日志
       _ <- IO(logger.info("[Step 5] 记录创建课程组的操作日志"))
-      operationDetails = s"教师 ${teacherID} 创建了课程组 [${name}]，学分: ${credit}"
+      operationDetails = s"教师 ${teacherID} 创建了课程组 ${name}，学分: ${credit}"
       _ <- recordCourseGroupOperationLog(teacherID, "创建课程组", courseGroupID, operationDetails)
 
       // Step 6: 构造返回的 CourseGroup 对象
