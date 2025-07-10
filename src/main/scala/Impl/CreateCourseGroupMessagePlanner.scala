@@ -63,7 +63,7 @@ case class CreateCourseGroupMessagePlanner(
       canCreate <- validateTeacherManagePermission()
       _ <- if (!canCreate) {
         IO(logger.error("[Step 2.1] 当前阶段禁止教师创建课程组")) >>
-        IO.raiseError(new IllegalStateException("当前阶段禁止创建课程组"))
+        IO.raiseError(new IllegalStateException("创建课程组权限未开启！"))
       } else IO(logger.info("[Step 2.2] 教师权限验证通过"))
 
       // Step 3: 在 CourseGroupTable 中插入课程组数据
