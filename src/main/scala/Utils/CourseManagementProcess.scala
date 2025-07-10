@@ -306,7 +306,7 @@ case object CourseManagementProcess {
         */
   
         // Step 2.3 准备日志记录的详细信息
-        detailsWithCourseID <- IO(s"课程ID=${courseID}:${details}")
+        detailsWithCourseID <- IO(s"[课程ID=${courseID}] ${details}")
         timestamp <- IO(DateTime.now().getMillis.toString)
         sql <- IO {
           s"""
