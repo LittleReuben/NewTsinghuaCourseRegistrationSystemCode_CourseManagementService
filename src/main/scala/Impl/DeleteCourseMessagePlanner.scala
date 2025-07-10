@@ -99,7 +99,7 @@ case class DeleteCourseMessagePlanner(
     def logOperation(teacherID: Int, courseID: Int): IO[Unit] = for {
       _ <- IO(logger.info(s"开始记录删除课程操作日志，教师ID: ${teacherID}, 课程ID: ${courseID}"))
       logDetails = s"教师ID=${teacherID} 删除了课程ID=${courseID}"
-      logResult <- recordCourseManagementOperationLog(teacherID, "DeleteCourse", courseID, logDetails)
+      logResult <- recordCourseManagementOperationLog(teacherID, "删除课程", courseID, logDetails)
       _ <- IO(logger.info(s"操作日志记录结果: ${logResult}"))
     } yield ()
 
