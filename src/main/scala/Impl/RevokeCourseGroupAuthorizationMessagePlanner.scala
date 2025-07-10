@@ -81,7 +81,7 @@ case class RevokeCourseGroupAuthorizationMessagePlanner(
       isManageAllowed <- validateTeacherManagePermission()
       _ <- if (!isManageAllowed) {
         IO(logger.error("[Step 3.1] 当前阶段不允许取消授权")) >>
-        IO.raiseError(new IllegalArgumentException("当前阶段不允许取消授权"))
+        IO.raiseError(new IllegalArgumentException("操作课程权限未开启！"))
       } else IO(logger.info("[Step 3.2] 当前阶段允许操作"))
 
       // Step 4: 删除授权记录。
