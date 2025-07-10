@@ -97,10 +97,10 @@ case class UpdateCourseMessagePlanner(
       _ <- IO(logger.info("[UpdateCourseMessagePlanner] 课程更新成功"))
 
       // Step 5: 记录操作日志
-      operationDetails = s"更新课程信息: 容量=${newCapacity.getOrElse(course.courseCapacity)}, 地点=${newLocation.getOrElse(course.location)}"
+      operationDetails = s"容量=${newCapacity.getOrElse(course.courseCapacity)}, 地点=${newLocation.getOrElse(course.location)}"
       _ <- recordCourseManagementOperationLog(
         teacherID = teacherID,
-        operation = "UpdateCourse",
+        operation = "更新课程信息",
         courseID = courseID,
         details = operationDetails
       )
