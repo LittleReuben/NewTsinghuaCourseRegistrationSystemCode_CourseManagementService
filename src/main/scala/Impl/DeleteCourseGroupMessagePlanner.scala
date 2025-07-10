@@ -69,7 +69,7 @@ case class DeleteCourseGroupMessagePlanner(
       canDelete <- validateTeacherManagePermission()
       _ <- if (!canDelete)
         IO(logger.error(s"当前阶段不允许删除课程组")) >>
-        IO.raiseError(new IllegalArgumentException("当前阶段不允许删除课程组"))
+        IO.raiseError(new IllegalArgumentException("操作课程权限未开启！"))
       else IO(logger.info(s"当前阶段允许删除课程组"))
 
       // Step 5: Delete associated courses from CourseTable
