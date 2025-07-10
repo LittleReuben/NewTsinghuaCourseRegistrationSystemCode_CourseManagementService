@@ -89,7 +89,7 @@ case class UpdateCourseGroupInfoMessagePlanner(
       canModify <- validateTeacherManagePermission()
       _ <- if (!canModify) {
         IO(logger.error("当前阶段不允许教师修改课程组")) >>
-          IO.raiseError(new IllegalStateException("Permission denied"))
+          IO.raiseError(new IllegalStateException("操作课程权限未开启！"))
       } else {
         IO(logger.info("当前阶段允许教师修改课程组"))
       }
