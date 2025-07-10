@@ -252,7 +252,7 @@ case object CourseManagementProcess {
         VALUES (?, ?, ?, ?)
         """
       }
-      detailsWithCourseGroupID <- IO(s"课程组ID=${courseGroupID}:${details}")
+      detailsWithCourseGroupID <- IO(s"[课程组ID=${courseGroupID}] ${details}")
       writeParams <- IO {
         List(
           SqlParameter("DateTime", timestamp.getMillis.toString),
