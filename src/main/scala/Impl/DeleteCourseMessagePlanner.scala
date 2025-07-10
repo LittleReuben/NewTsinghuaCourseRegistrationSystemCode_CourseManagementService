@@ -81,7 +81,7 @@ case class DeleteCourseMessagePlanner(
       isAllowed <- validateTeacherManagePermission()
       _ <- if (!isAllowed) {
         IO(logger.warn("当前阶段不允许删除课程")) >>
-          IO.raiseError(new IllegalStateException("当前阶段不允许删除课程"))
+          IO.raiseError(new IllegalStateException("操作课程权限未开启！"))
       } else IO(logger.info("当前阶段允许删除课程"))
     } yield ()
 
