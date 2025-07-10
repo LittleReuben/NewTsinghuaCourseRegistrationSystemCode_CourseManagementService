@@ -71,7 +71,7 @@ case class GrantCourseGroupAuthorizationMessagePlanner(
       _ <- validateTeacherManagePermission().flatMap { hasPermission =>
         if (!hasPermission) {
           IO(logger.error(s"教师管理权限未开启")) >>
-            IO.raiseError(new IllegalStateException(s"教师管理权限未开启"))
+            IO.raiseError(new IllegalStateException(s"操作课程权限未开启！"))
         } else IO(logger.info(s"教师管理权限验证通过"))
       }
 
