@@ -125,8 +125,8 @@ case class UpdateCourseGroupInfoMessagePlanner(
   }
 
   private def recordOperationLogStep(teacherID: Int, originalGroup: CourseGroup)(using PlanContext): IO[Unit] = {
-    val details = s"Updated course group: ID=${originalGroup.courseGroupID}, newName=${newName.getOrElse("unchanged")}, newCredit=${newCredit.getOrElse(-1)}"
-    recordCourseGroupOperationLog(teacherID, "UpdateCourseGroupInfo", courseGroupID, details)
+    val details = s"ID=${originalGroup.courseGroupID}, newName=${newName.getOrElse("unchanged")}, newCredit=${newCredit.getOrElse(-1)}"
+    recordCourseGroupOperationLog(teacherID, "更新课程组信息", courseGroupID, details)
   }
 
   private def fetchUpdatedCourseGroupStep()(using PlanContext): IO[CourseGroup] = {
