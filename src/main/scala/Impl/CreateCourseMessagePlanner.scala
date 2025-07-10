@@ -68,7 +68,7 @@ case class CreateCourseMessagePlanner(
 
       // Step 3: 验证当前阶段是否允许创建课程
       managePermission <- validateTeacherManagePermission()
-      _ <- if (!managePermission) IO.raiseError(new IllegalStateException(s"当前阶段不允许创建课程。")) else IO(logger.info("权限验证通过，老师可以创建课程"))
+      _ <- if (!managePermission) IO.raiseError(new IllegalStateException(s"操作课程权限未开启！")) else IO(logger.info("权限验证通过，老师可以创建课程"))
 
       // Step 4: 检查新增课程时间是否冲突
       hasTimeConflict <- validateCourseTimeConflict(teacherID, time)
