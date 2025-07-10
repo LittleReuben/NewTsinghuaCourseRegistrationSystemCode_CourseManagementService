@@ -79,7 +79,7 @@ case class UpdateCourseMessagePlanner(
       _ <- IO(logger.info("[UpdateCourseMessagePlanner] 验证教师是否有管理权限"))
       allowManage <- validateTeacherManagePermission()
       _ <- if (!allowManage) {
-        IO.raiseError(new IllegalStateException("当前阶段不允许教师修改课程"))
+        IO.raiseError(new IllegalStateException("操作课程权限未开启！"))
       } else IO.unit
       _ <- IO(logger.info("[UpdateCourseMessagePlanner] 验证通过，允许教师修改课程"))
 
